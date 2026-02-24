@@ -2,6 +2,8 @@
 return {
   "mason-org/mason.nvim",
   opts = {
-    ensure_installed = {},
+    ensure_installed = {
+      "clangd",
+    },
   },
 }
