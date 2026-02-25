@@ -57,3 +57,77 @@ vim.keymap.set("n", "<leader>mc", function()
   -- Call Molten's API with 1-indexed line numbers
   vim.fn.MoltenEvaluateRange(cell_start_line_0_indexed + 1, cell_end_line_0_indexed + 1)
 end, { silent = true, desc = "Run current Jupyter cell" })
+
+local function run_cells(run_all, run_above)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local last_line = vim.api.nvim_buf_line_count(bufnr)
+  local cur_line = vim.api.nvim_win_get_cursor(0)[1]
+  local ft = vim.api.nvim_get_option_value("filetype", { buf = bufnr })
+
+  if ft == "markdown" or ft == "quarto" then
+    local block_start = nil
+    for i = 0, last_line - 1 do
+      local line = vim.api.nvim_buf_get_lines(bufnr, i, i + 1, false)[1]
+      
+      -- Om vi ser början på ett kodblock
+      if not block_start and (line:match("^```%a+") or line:match("^```{%a+}")) then
+        block_start = i + 1 -- Spara raden efter ```
+      -- Om vi ser slutet på ett kodblock och vi är inuti ett
+      elseif block_start and line:match("^```%s*$") then
+        local block_end = i - 1 -- Spara raden före ```
+
+        if block_start <= block_end then
+          -- Kolla om vi ska köra detta blocket
+          local should_run = run_all
+          if run_above and block_end < cur_line then
+             should_run = true
+          end
+          
+          if should_run then
+            vim.fn.MoltenEvaluateRange(block_start + 1, block_end + 1)
+          end
+        end
+        block_start = nil -- Nollställ för nästa block
+      end
+    end
+  else
+    -- Standard python fil med # %%
+    local cell_start = 0
+    for i = 0, last_line - 1 do
+      local line = vim.api.nvim_buf_get_lines(bufnr, i, i + 1, false)[1]
+      if line:find("# %%", 1, true) then
+        if i > cell_start then
+          local cell_end = i - 1
+          local should_run = run_all
+          if run_above and cell_end < cur_line then
+             should_run = true
+          end
+          if should_run then
+            vim.fn.MoltenEvaluateRange(cell_start + 1, cell_end + 1)
+          end
+        end
+        cell_start = i + 1
+      end
+    end
+    -- Sista cellen
+    if last_line > cell_start then
+      local should_run = run_all
+      if run_above and last_line < cur_line then -- Kommer normalt sett aldrig gälla om man inte står efter filens slut
+         should_run = true
+      end
+      if should_run then
+        vim.fn.MoltenEvaluateRange(cell_start + 1, last_line)
+      end
+    end
+  end
+end
+
+-- Kör alla Jupyter-celler ovanför markören
+vim.keymap.set("n", "<leader>ma", function()
+  run_cells(false, true)
+end, { silent = true, desc = "Run all cells above" })
+
+-- Kör alla Jupyter-celler i filen
+vim.keymap.set("n", "<leader>mA", function()
+  run_cells(true, false)
+end, { silent = true, desc = "Run all cells" })
