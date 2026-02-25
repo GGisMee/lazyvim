@@ -9,27 +9,48 @@ vim.keymap.set("n", "<leader>md", ":MoltenDelete<CR>", { silent = true, desc = "
 vim.keymap.set("n", "<leader>mh", ":MoltenHideOutput<CR>", { silent = true, desc = "hide output" })
 vim.keymap.set("n", "<leader>ms", ":noautocmd MoltenEnterOutput<CR>", { silent = true, desc = "show/enter output" })
 
--- Kör Jupyter-cellen vid markören (allt mellan # %%)
+-- Kör Jupyter-cellen vid markören (stöder både # %% och Markdown-kodblock)
 vim.keymap.set("n", "<leader>mc", function()
   local bufnr = vim.api.nvim_get_current_buf()
   local cur_line_1_indexed = vim.api.nvim_win_get_cursor(0)[1]
   local last_buffer_line_1_indexed = vim.api.nvim_buf_line_count(bufnr)
+  local ft = vim.api.nvim_get_option_value("filetype", { buf = bufnr })
 
   local cell_start_line_0_indexed = 0
-  for i = cur_line_1_indexed - 1, 0, -1 do -- Iterate backwards from cursor line (0-indexed)
-    local line_content = vim.api.nvim_buf_get_lines(bufnr, i, i + 1, false)[1]
-    if line_content and line_content:find("# %%", 1, true) then -- Use string.find for literal match
-      cell_start_line_0_indexed = i + 1
-      break
-    end
-  end
-
   local cell_end_line_0_indexed = last_buffer_line_1_indexed - 1
-  for i = cur_line_1_indexed - 1, last_buffer_line_1_indexed - 1 do -- Iterate forwards from cursor line (0-indexed)
-    local line_content = vim.api.nvim_buf_get_lines(bufnr, i, i + 1, false)[1]
-    if line_content and line_content:find("# %%", 1, true) then -- Use string.find for literal match
-      cell_end_line_0_indexed = i - 1
-      break
+
+  if ft == "markdown" or ft == "quarto" then
+    -- Sök bakåt efter kodblockets start (t.ex. ```python)
+    for i = cur_line_1_indexed - 1, 0, -1 do
+      local line_content = vim.api.nvim_buf_get_lines(bufnr, i, i + 1, false)[1]
+      if line_content and (line_content:match("^```%a+") or line_content:match("^```{%a+}")) then
+        cell_start_line_0_indexed = i + 1
+        break
+      end
+    end
+    -- Sök framåt efter kodblockets slut (```)
+    for i = cur_line_1_indexed - 1, last_buffer_line_1_indexed - 1 do
+      local line_content = vim.api.nvim_buf_get_lines(bufnr, i, i + 1, false)[1]
+      if line_content and line_content:match("^```%s*$") then
+        cell_end_line_0_indexed = i - 1
+        break
+      end
+    end
+  else
+    -- Standard # %% sökning
+    for i = cur_line_1_indexed - 1, 0, -1 do
+      local line_content = vim.api.nvim_buf_get_lines(bufnr, i, i + 1, false)[1]
+      if line_content and line_content:find("# %%", 1, true) then
+        cell_start_line_0_indexed = i + 1
+        break
+      end
+    end
+    for i = cur_line_1_indexed - 1, last_buffer_line_1_indexed - 1 do
+      local line_content = vim.api.nvim_buf_get_lines(bufnr, i, i + 1, false)[1]
+      if line_content and line_content:find("# %%", 1, true) then
+        cell_end_line_0_indexed = i - 1
+        break
+      end
     end
   end
 
